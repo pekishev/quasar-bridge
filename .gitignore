@@ -9,6 +9,8 @@ chatgpt-auth*.json
 *.env
 !*.env.example
 *.key
+*.ppk
+ha-token.txt
 *.pem
 *.p12
 *.pfx

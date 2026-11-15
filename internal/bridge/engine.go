@@ -31,7 +31,13 @@ type MusicStarter interface {
 	CanStartMusic(string) bool
 	StartMusic(context.Context, string) (string, error)
 }
+type DirectHomeHandler interface {
+	HomeHandler
+	Matches(string) bool
+}
 type Engine struct {
+	DirectHome    DirectHomeHandler
+	LocalOnly     bool
 	Configuration bool
 	Recovery      func(context.Context, string) (string, error)
 	AirPlay       AirPlayController
@@ -163,6 +169,11 @@ func (e *Engine) ResolveDecision(ctx context.Context, text string, decision Rout
 		result.Answer = answer
 		return result, err
 	case "home":
+		if e.DirectHome != nil {
+			answer, err := e.DirectHome.Handle(ctx, text)
+			result.Answer = answer
+			return result, err
+		}
 		if e.Home == nil {
 			return Resolution{Route: "yandex"}, nil
 		}
@@ -266,6 +277,12 @@ func (e *Engine) Decide(ctx context.Context, text string) (decision RouteDecisio
 		decision.prepared = true
 	}()
 	p := e.policy()
+	if e.LocalOnly {
+		if e.DirectHome != nil && e.DirectHome.Matches(text) {
+			return RouteDecision{Route: "home", Source: "direct_ha"}
+		}
+		return RouteDecision{Route: "yandex", Source: "local_allowlist_miss"}
+	}
 	if configvoice.RecoveryAction(text) != "" {
 		return RouteDecision{Route: "recovery", Source: "bridge_recovery"}
 	}

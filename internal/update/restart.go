@@ -9,7 +9,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"syscall"
 
 	"quasarbridge/internal/reply"
 )
@@ -127,7 +126,7 @@ rollback) sh "$1/app/control.sh" rollback && reboot ;;
 esac
 `
 	cmd := exec.Command("sh", "-c", script, "quasar-bridge-service", state, lock, action)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	detachProcess(cmd)
 	cmd.ExtraFiles = []*os.File{reader}
 	cmd.Stdout, cmd.Stderr = log, log
 	if err := cmd.Start(); err != nil {

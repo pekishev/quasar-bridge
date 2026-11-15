@@ -14,6 +14,7 @@ import (
 	"quasarbridge/internal/bridge"
 	"quasarbridge/internal/chatgpt"
 	"quasarbridge/internal/dialogue"
+	"quasarbridge/internal/directha"
 	"quasarbridge/internal/journal"
 	"quasarbridge/internal/llm"
 )
@@ -25,6 +26,7 @@ type progressConfig struct {
 }
 
 type config struct {
+	DirectHA           directha.Config      `json:"direct_ha"`
 	AirPlay            airPlayConfig        `json:"airplay"`
 	DialogueContext    dialogue.Config      `json:"dialogue_context"`
 	LocalProgress      progressConfig       `json:"local_progress"`
@@ -174,8 +176,8 @@ func parseConfig(raw []byte, modelOptional bool) (config, error) {
 	if _, _, err := net.SplitHostPort(cfg.Listen); err != nil {
 		return cfg, errors.New("listen must include host and port")
 	}
-	if cfg.Mode != "observe" && cfg.Mode != "hybrid" {
-		return cfg, errors.New("mode must be observe or hybrid")
+	if cfg.Mode != "observe" && cfg.Mode != "hybrid" && cfg.Mode != "local" {
+		return cfg, errors.New("mode must be observe, hybrid or local")
 	}
 	if !validEndpoint(cfg.Upstream, "ws", "wss") {
 		return cfg, errors.New("invalid upstream URL")
@@ -217,6 +219,17 @@ func parseConfig(raw []byte, modelOptional bool) (config, error) {
 	}
 	if _, err := bridge.CompileRouting(cfg.Routing); err != nil {
 		return cfg, err
+	}
+	if len(cfg.DirectHA.Rules) == 0 {
+		cfg.DirectHA.Rules = nil
+	}
+	if cfg.Mode == "local" {
+		if cfg.AssistantTools.Enabled || cfg.Routing.ClassifierEnabled() || cfg.Routing.DefaultDestination() != "yandex" || cfg.Routing.Refusal.Enabled {
+			return cfg, errors.New("local mode requires tools/classifier/refusal disabled and default_route yandex")
+		}
+		if _, err := directha.New(cfg.DirectHA, ""); err != nil {
+			return cfg, err
+		}
 	}
 	return cfg, nil
 }

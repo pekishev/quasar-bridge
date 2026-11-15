@@ -18,7 +18,6 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -401,7 +400,7 @@ printf '\nUpdate installer exit status: %s\n' "$result"
 exit "$result"
 `
 	cmd := exec.Command("sh", "-c", script, "quasar-bridge-update", stage, state, lock)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	detachProcess(cmd)
 	cmd.Stdout = log
 	cmd.Stderr = log
 	if err := cmd.Start(); err != nil {

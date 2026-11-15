@@ -24,6 +24,7 @@ import (
 	"quasarbridge/internal/assistant"
 	"quasarbridge/internal/bridge"
 	"quasarbridge/internal/dialogue"
+	"quasarbridge/internal/directha"
 	"quasarbridge/internal/home"
 	"quasarbridge/internal/journal"
 	"quasarbridge/internal/llm"
@@ -223,9 +224,31 @@ func main() {
 			engine.AirPlay = airPlay
 		}
 	}
+	var direct *directha.Controller
+	if cfg.Mode == "local" {
+		direct, err = directha.New(cfg.DirectHA, os.Getenv("QUASAR_HA_TOKEN"))
+		if err != nil {
+			slog.Error("direct HA configuration rejected")
+			os.Exit(1)
+		}
+		engine.DirectHome = direct
+		engine.Home = direct
+		engine.LocalOnly = true
+		engine.LLM = nil
+		if *check {
+			checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			defer cancel()
+			if err := direct.Check(checkCtx); err != nil {
+				slog.Error("direct HA check failed", "error", err)
+				os.Exit(1)
+			}
+			fmt.Println("Direct Home Assistant: ok; no actions executed; LLM disabled")
+			return
+		}
+	}
 	var musicQueue *assistant.MusicQueue
 	var hc *home.Controller
-	if endpoint := os.Getenv("QUASAR_HOME_MCP_URL"); endpoint != "" {
+	if endpoint := os.Getenv("QUASAR_HOME_MCP_URL"); endpoint != "" && cfg.Mode != "local" {
 		hc = &home.Controller{Tools: &home.MCP{URL: endpoint}, Planner: lc}
 		engine.Home = hc
 	}
@@ -308,7 +331,7 @@ func main() {
 	}
 	defer logs.Close()
 	proxy.Journal = logs
-	if cfg.Mode == "hybrid" {
+	if cfg.Mode == "hybrid" || cfg.Mode == "local" {
 		if hc != nil && cfg.HomeWarmArea != "" {
 			warmCtx, warmCancel := context.WithCancel(context.Background())
 			defer warmCancel()
@@ -355,7 +378,7 @@ func main() {
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		state := engine.RoutingStatus()
-		data, _ := json.Marshal(map[string]any{"status": "ok", "mode": cfg.Mode, "airplay": airPlayHealth(airPlay), "client_frames": clientCount.Load(), "server_frames": serverCount.Load(), "routing_revision": state.Revision, "routing_rules": state.ActiveRules, "routing_classifier_enabled": state.ClassifierEnabled, "routing_default_route": state.DefaultRoute, "conversation_log_enabled": logs.Enabled(), "conversation_log_failures": logs.Failures(), "assistant_tools_enabled": cfg.AssistantTools.Enabled, "dialogue_context_enabled": cfg.DialogueContext.Enabled && cfg.Mode == "hybrid", "home_assistant_enabled": hc != nil && cfg.Mode == "hybrid", "mcp_servers_configured": mcpConfigured, "music_playback_enabled": musicQueue != nil, "speaker_subscriptions": subscriptions.Snapshot()})
+		data, _ := json.Marshal(map[string]any{"status": "ok", "mode": cfg.Mode, "airplay": airPlayHealth(airPlay), "client_frames": clientCount.Load(), "server_frames": serverCount.Load(), "routing_revision": state.Revision, "routing_rules": state.ActiveRules, "routing_classifier_enabled": state.ClassifierEnabled, "routing_default_route": state.DefaultRoute, "conversation_log_enabled": logs.Enabled(), "conversation_log_failures": logs.Failures(), "assistant_tools_enabled": cfg.AssistantTools.Enabled, "dialogue_context_enabled": cfg.DialogueContext.Enabled && cfg.Mode == "hybrid", "home_assistant_enabled": direct != nil || (hc != nil && cfg.Mode == "hybrid"), "mcp_servers_configured": mcpConfigured, "music_playback_enabled": musicQueue != nil, "speaker_subscriptions": subscriptions.Snapshot()})
 		_, _ = w.Write(data)
 	})
 	mux.Handle("/uni.ws", proxy)

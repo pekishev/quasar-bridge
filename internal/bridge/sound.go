@@ -65,7 +65,7 @@ func (n *Native) takeSound(p *nativeRequest) []*directives.TDirective {
 func (n *Native) hasSilentPlayback(p *nativeRequest) bool {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	return p.soundDirective != nil && p.soundRequest != nil && (p.soundRequest.URL != "" || p.soundRequest.Command != "")
+	return p.soundDirective != nil && p.soundRequest != nil && (p.soundRequest.URL != "" || p.soundRequest.Command != "" || (p.soundRequest.Sound == "success" && p.soundRequest.Title == "direct-ha-confirmation"))
 }
 
 func makeSoundDirective(request sound.Request) (*directives.TDirective, error) {
