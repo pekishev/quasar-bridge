@@ -128,7 +128,7 @@ func (c *Controller) Handle(ctx context.Context, text string) (string, error) {
 		return "Не удалось подтвердить выполнение команды в Home Assistant.", nil
 	}
 	if sound.HasPlayer(ctx) {
-		if err := sound.Play(ctx, sound.Request{Sound: "success", Title: "direct-ha-confirmation"}); err != nil {
+		if err := sound.Play(ctx, sound.Request{Sound: "confirmation", Title: "direct-ha-confirmation"}); err != nil {
 			return "", err
 		}
 	}

@@ -65,7 +65,7 @@ func (n *Native) takeSound(p *nativeRequest) []*directives.TDirective {
 func (n *Native) hasSilentPlayback(p *nativeRequest) bool {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	return p.soundDirective != nil && p.soundRequest != nil && (p.soundRequest.URL != "" || p.soundRequest.Command != "" || (p.soundRequest.Sound == "success" && p.soundRequest.Title == "direct-ha-confirmation"))
+	return p.soundDirective != nil && p.soundRequest != nil && (p.soundRequest.URL != "" || p.soundRequest.Command != "" || (p.soundRequest.Sound == "confirmation" && p.soundRequest.Title == "direct-ha-confirmation"))
 }
 
 func makeSoundDirective(request sound.Request) (*directives.TDirective, error) {
@@ -109,6 +109,8 @@ func makeSoundDirective(request sound.Request) (*directives.TDirective, error) {
 		stored = fileplayer.TAudioFilePlayerCapability_NotificationSound
 	case "success":
 		stored = fileplayer.TAudioFilePlayerCapability_AliceIoTSoundsDone
+	case "confirmation":
+		stored = fileplayer.TAudioFilePlayerCapability_VolumeSound
 	case "error":
 		stored = fileplayer.TAudioFilePlayerCapability_SpotterError
 	case "timer":

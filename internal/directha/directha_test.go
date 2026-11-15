@@ -73,7 +73,7 @@ func TestOnlyMatchedServiceCalled(t *testing.T) {
 	var played atomic.Int32
 	ctx := sound.WithPlayer(context.Background(), func(_ context.Context, r sound.Request) error {
 		played.Add(1)
-		if r.Sound != "success" || r.Title != "direct-ha-confirmation" || r.URL != "" {
+		if r.Sound != "confirmation" || r.Title != "direct-ha-confirmation" || r.URL != "" {
 			t.Error("wrong confirmation sound")
 		}
 		return nil
