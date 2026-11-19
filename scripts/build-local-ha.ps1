@@ -11,7 +11,7 @@ try {
     $ErrorActionPreference = 'Continue'
     & $GoExe test ./internal/directha ./internal/bridge
     if ($LASTEXITCODE -ne 0) { throw 'Handler/routing tests failed.' }
-    & $GoExe test ./cmd/quasar-bridge -run 'TestLocalMode|TestReloadJournalKeepsWorkingPolicyOnOpenFailure'
+    & $GoExe test ./cmd/quasar-bridge -run 'TestLocalMode|TestReloadJournalKeepsWorkingPolicyOnOpenFailure|TestDirectHAEditor'
     if ($LASTEXITCODE -ne 0) { throw 'Configuration tests failed.' }
     New-Item -ItemType Directory -Path 'dist' -Force | Out-Null
     $env:GOOS = 'linux'

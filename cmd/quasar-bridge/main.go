@@ -363,6 +363,12 @@ func main() {
 		}
 	}
 	mux := http.NewServeMux()
+	if address := os.Getenv("QUASAR_DIRECT_HA_WEB_LISTEN"); address != "" && direct != nil {
+		if err := startDirectHAEditor(ctx, address, direct, configuration); err != nil {
+			slog.Error("command editor configuration rejected", "error", err)
+			os.Exit(1)
+		}
+	}
 	registerDiagnostics(mux, diagnosticLogs, func() map[string]any { return airPlayHealth(airPlay) })
 	if musicQueue != nil {
 		mux.Handle("/music-stream/", musicQueue)

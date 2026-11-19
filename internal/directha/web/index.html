@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Команды дома · Quasar Bridge</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <script src="/assets/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar"><div class="topbar-inner">
+    <a class="brand" href="/" aria-label="Quasar Bridge — главная"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 10v4m5-8v12m5-15v18m5-13v8"/></svg></span>Quasar <span class="brand-light">Bridge</span></a>
+    <span class="local-badge"><span class="dot"></span>Локальное управление</span>
+  </div></header>
+  <main>
+    <section class="intro">
+      <div><p class="eyebrow">АЛИСА + HOME ASSISTANT</p><h1>Команды дома</h1><p class="intro-text">Выберите, какие фразы управляют вашим домом.<br> Музыка и остальные запросы останутся у Алисы.</p></div>
+      <div class="summary"><span class="summary-number" id="rule-count">—</span><span id="summary-label">команд</span><span class="summary-detail" id="entity-count">Загружаем настройки</span></div>
+    </section>
+    <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+    <section class="commands-panel" aria-labelledby="commands-heading">
+      <div class="section-toolbar"><div><h2 id="commands-heading">Ваши команды</h2><p>Одна команда — одно действие. Варианты фразы указывайте с новой строки.</p></div><div class="toolbar-buttons"><button id="reload" class="button ghost" type="button" disabled>Обновить</button><button id="add" class="button primary" type="button" disabled><span aria-hidden="true">＋</span> Добавить команду</button></div></div>
+      <div class="entity-toolbar"><span id="ha-status" class="ha-status" aria-live="polite"><span class="dot loading"></span>Получаем сущности HA…</span><button id="refresh-entities" type="button" class="text-button">Обновить сущности</button></div>
+      <div id="rules" class="rules-grid" aria-busy="true"><div class="skeleton"></div><div class="skeleton"></div></div>
+      <div id="empty" class="empty" hidden><span aria-hidden="true">✧</span><h3>Начнём с первой команды</h3><p>Например, «включи свет» → выключатель в кабинете.</p><button id="add-empty" class="button primary" type="button">Добавить команду</button></div>
+    </section>
+    <section class="preview-panel" aria-labelledby="preview-heading"><div><span class="section-icon" aria-hidden="true">↗</span><h2 id="preview-heading">Проверить фразу</h2><p>Посмотрите, куда пойдёт запрос по текущему списку. Устройства не переключаются.</p></div><form id="preview-form"><label class="sr-only" for="preview-input">Фраза для проверки</label><input id="preview-input" placeholder="Например, включи ночник" maxlength="512" autocomplete="off"><button class="button secondary" type="submit" disabled id="preview-button">Проверить</button></form><p id="preview-result" class="preview-result" role="status" aria-live="polite" hidden></p></section>
+    <p class="footer-note">Сохраняются только фразы и привязки. Токен Home Assistant остаётся на колонке.</p>
+  </main>
+  <footer class="savebar"><div class="savebar-inner"><div><span class="save-indicator" id="save-indicator"></span><strong id="save-state">Загрузка…</strong><span class="save-description" id="save-description">Изменения применяются без перезапуска</span></div><button id="save" class="button primary save-button" type="button" disabled>Сохранить изменения <span aria-hidden="true">↗</span></button></div></footer>
+  <datalist id="ha-entities"></datalist>
+  <template id="rule-template"><article class="rule-card"><div class="card-top"><span class="command-number"></span><button class="remove icon-button" type="button" aria-label="Удалить команду"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 5h12M8 5V3h4v2M6 5l1 12h6l1-12M9 8v6m2-6v6"/></svg></button></div><label class="field-label phrase-label">Когда я говорю</label><textarea class="phrases" rows="2" maxlength="32768" placeholder="включи свет" spellcheck="false"></textarea><div class="mapping-row"><div class="entity-field"><label class="field-label entity-label">Сущность Home Assistant</label><input class="entity" list="ha-entities" placeholder="switch.cabinet" autocomplete="off" spellcheck="false" maxlength="128"><p class="entity-hint"></p></div><div class="action-field"><label class="field-label action-label">Действие</label><select class="action"><option value="turn_on">Включить</option><option value="turn_off">Выключить</option></select></div></div><p class="rule-error" role="alert" hidden></p></article></template>
+</body>
+</html>

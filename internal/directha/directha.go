@@ -14,6 +14,7 @@ import (
 	"quasarbridge/internal/sound"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -30,8 +31,34 @@ type Config struct {
 type Controller struct {
 	base   string
 	token  string
-	rules  map[string]Rule
+	rules  atomic.Pointer[ruleSnapshot]
 	client *http.Client
+}
+
+type ruleSnapshot struct {
+	lookup map[string]Rule
+	rules  []Rule
+}
+
+func cloneRules(rules []Rule) []Rule {
+	out := make([]Rule, len(rules))
+	for i, r := range rules {
+		out[i] = r
+		out[i].Phrases = append([]string(nil), r.Phrases...)
+	}
+	return out
+}
+
+// Rules returns a copy so the editor cannot mutate an active voice request.
+func (c *Controller) Rules() []Rule { return cloneRules(c.rules.Load().rules) }
+func (c *Controller) ReplaceRules(rules []Rule) error {
+	candidate, err := New(Config{URL: c.base, Rules: rules}, c.token)
+	if err != nil {
+		return err
+	}
+	candidate.client.CloseIdleConnections()
+	c.rules.Store(candidate.rules.Load())
+	return nil
 }
 
 var entityPattern = regexp.MustCompile(`^[a-z_]+\.[a-z0-9_]+$`)
@@ -60,8 +87,16 @@ func New(cfg Config, token string) (*Controller, error) {
 	if ip == nil || (!ip.IsPrivate() && !ip.IsLoopback()) {
 		return nil, errors.New("direct_ha.url requires a private or loopback IP address")
 	}
-	c := &Controller{base: strings.TrimRight(cfg.URL, "/"), token: token, rules: map[string]Rule{}, client: &http.Client{Timeout: 8 * time.Second, Transport: &http.Transport{Proxy: nil, DialContext: (&net.Dialer{Timeout: 3 * time.Second}).DialContext, TLSHandshakeTimeout: 3 * time.Second}, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}}
-	for _, r := range cfg.Rules {
+	c := &Controller{base: strings.TrimRight(cfg.URL, "/"), token: token, client: &http.Client{Timeout: 8 * time.Second, Transport: &http.Transport{Proxy: nil, DialContext: (&net.Dialer{Timeout: 3 * time.Second}).DialContext, TLSHandshakeTimeout: 3 * time.Second}, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}}
+	if len(cfg.Rules) > 256 {
+		return nil, errors.New("direct_ha: at most 256 rules are supported")
+	}
+	snapshot := &ruleSnapshot{lookup: map[string]Rule{}, rules: cloneRules(cfg.Rules)}
+	for _, r := range snapshot.rules {
+		if len(r.Phrases) > 64 {
+			return nil, errors.New("direct_ha: at most 64 phrases per rule are supported")
+		}
+
 		if !entityPattern.MatchString(r.EntityID) || !strings.HasPrefix(r.EntityID, r.Domain+".") {
 			return nil, errors.New("direct_ha: invalid entity_id/domain")
 		}
@@ -78,18 +113,22 @@ func New(cfg Config, token string) (*Controller, error) {
 		}
 		for _, phrase := range r.Phrases {
 			key := Normalize(phrase)
-			if key == "" {
+			if key == "" || len(phrase) > 512 {
 				return nil, errors.New("direct_ha: empty phrase")
 			}
-			if _, exists := c.rules[key]; exists {
+			if _, exists := snapshot.lookup[key]; exists {
 				return nil, errors.New("direct_ha: duplicate normalized phrase")
 			}
-			c.rules[key] = r
+			snapshot.lookup[key] = r
 		}
 	}
+	c.rules.Store(snapshot)
 	return c, nil
 }
-func (c *Controller) Matches(text string) bool { _, ok := c.rules[Normalize(text)]; return ok }
+func (c *Controller) Matches(text string) bool {
+	_, ok := c.rules.Load().lookup[Normalize(text)]
+	return ok
+}
 
 func (c *Controller) request(ctx context.Context, method, path string, body io.Reader) error {
 	if strings.TrimSpace(c.token) == "" {
@@ -118,7 +157,7 @@ func (c *Controller) Check(ctx context.Context) error {
 	return c.request(ctx, http.MethodGet, "/api/", nil)
 }
 func (c *Controller) Handle(ctx context.Context, text string) (string, error) {
-	r, ok := c.rules[Normalize(text)]
+	r, ok := c.rules.Load().lookup[Normalize(text)]
 	if !ok {
 		return "", errors.New("phrase is not in the direct HA allowlist")
 	}

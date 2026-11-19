@@ -25,6 +25,7 @@ ha-token.txt
 *.gz
 *.orig
 *.bak
+*.direct-ha-backup
 quasar.cfg*
 *.local.md
 /manifest.json
