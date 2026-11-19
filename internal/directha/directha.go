@@ -19,10 +19,13 @@ import (
 )
 
 type Rule struct {
-	Phrases  []string `json:"phrases"`
-	Domain   string   `json:"domain"`
-	Service  string   `json:"service"`
-	EntityID string   `json:"entity_id"`
+	Phrases     []string `json:"phrases"`
+	Domain      string   `json:"domain"`
+	Service     string   `json:"service"`
+	EntityID    string   `json:"entity_id"`
+	HVACMode    string   `json:"hvac_mode,omitempty"`
+	Temperature *float64 `json:"temperature,omitempty"`
+	FanMode     string   `json:"fan_mode,omitempty"`
 }
 type Config struct {
 	URL   string `json:"url"`
@@ -45,6 +48,10 @@ func cloneRules(rules []Rule) []Rule {
 	for i, r := range rules {
 		out[i] = r
 		out[i].Phrases = append([]string(nil), r.Phrases...)
+		if r.Temperature != nil {
+			value := *r.Temperature
+			out[i].Temperature = &value
+		}
 	}
 	return out
 }
@@ -100,13 +107,8 @@ func New(cfg Config, token string) (*Controller, error) {
 		if !entityPattern.MatchString(r.EntityID) || !strings.HasPrefix(r.EntityID, r.Domain+".") {
 			return nil, errors.New("direct_ha: invalid entity_id/domain")
 		}
-		switch r.Domain {
-		case "switch", "light", "fan", "input_boolean":
-		default:
-			return nil, errors.New("direct_ha: unsupported domain")
-		}
-		if r.Service != "turn_on" && r.Service != "turn_off" {
-			return nil, errors.New("direct_ha: only turn_on/turn_off are supported")
+		if err := validateAction(r); err != nil {
+			return nil, err
 		}
 		if len(r.Phrases) == 0 {
 			return nil, errors.New("direct_ha: rule needs phrases")
@@ -161,10 +163,14 @@ func (c *Controller) Handle(ctx context.Context, text string) (string, error) {
 	if !ok {
 		return "", errors.New("phrase is not in the direct HA allowlist")
 	}
-	body, _ := json.Marshal(map[string]string{"entity_id": r.EntityID})
-	if err := c.request(ctx, http.MethodPost, "/api/services/"+r.Domain+"/"+r.Service, bytes.NewReader(body)); err != nil {
-		// A failed/ambiguous local operation must not be retried by cloud handlers.
-		return "Не удалось подтвердить выполнение команды в Home Assistant.", nil
+	for i, action := range actionsFor(r) {
+		body, _ := json.Marshal(action.Data)
+		if err := c.request(ctx, http.MethodPost, "/api/services/"+r.Domain+"/"+action.Service, bytes.NewReader(body)); err != nil {
+			if i > 0 {
+				return "Режим кондиционера установлен, но не удалось настроить вентилятор.", nil
+			}
+			return "Не удалось подтвердить выполнение команды в Home Assistant.", nil
+		}
 	}
 	if sound.HasPlayer(ctx) {
 		if err := sound.Play(ctx, sound.Request{Sound: "confirmation", Title: "direct-ha-confirmation"}); err != nil {

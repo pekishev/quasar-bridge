@@ -2,14 +2,21 @@
 const $ = (selector, root = document) => root.querySelector(selector);
 let revision = "", csrf = "", baseline = "", loaded = false, dirty = false, saving = false;
 let entities = [], entitiesReady = false, nextId = 1;
-const domains = new Set(["switch", "light", "fan", "input_boolean"]);
+const domains = new Set(["switch", "light", "fan", "input_boolean", "climate"]);
 function normalize(text) {
   return text.toLowerCase().trim().replaceAll("ё", "е").replace(/[ .,!?:;…]+$/u, "").replace(/\s+/gu, " ").replace(/^алиса(?:,\s*|\s+)/u, "").trim();
 }
 function collect() {
   return [...document.querySelectorAll(".rule-card")].map(card => {
     const entity = $(".entity", card).value.trim();
-    return {phrases: $(".phrases", card).value.split("\n").map(s => s.trim()).filter(Boolean), entity_id: entity, domain: entity.split(".")[0], service: $(".action", card).value};
+    const rule = {phrases: $(".phrases", card).value.split("\n").map(s => s.trim()).filter(Boolean), entity_id: entity, domain: entity.split(".")[0], service: $(".action", card).value};
+    if (rule.domain === "climate" && rule.service === "set_temperature") {
+      rule.hvac_mode = $(".hvac-mode", card).value;
+      rule.temperature = Number($(".temperature", card).value);
+      const fan = $(".fan-mode", card).value;
+      if (fan) rule.fan_mode = fan;
+    }
+    return rule;
   });
 }
 function notice(message = "", kind = "error") {
@@ -41,6 +48,39 @@ function entityHint(card) {
     hint.classList.toggle("unavailable", ["unavailable", "unknown"].includes(entity.state));
   } else { hint.textContent = !id ? "Выберите из списка или введите идентификатор" : entitiesReady ? "Нет в списке HA — проверьте идентификатор" : "Идентификатор можно ввести вручную"; }
 }
+function configureClimate(card, saved) {
+  const id = $(".entity",card).value.trim(), climate = id.startsWith("climate."), action = $(".action",card), fields = $(".climate-fields",card);
+  if (card.dataset.climate !== String(climate)) {
+    const old=action.value; action.replaceChildren();
+    for (const [value,label] of climate ? [["set_temperature","Настроить"],["turn_off","Выключить"]] : [["turn_on","Включить"],["turn_off","Выключить"]]) {
+      const option=document.createElement("option");option.value=value;option.textContent=label;action.append(option);
+    }
+    action.value=old==="turn_off"?"turn_off":climate?"set_temperature":"turn_on";
+    card.dataset.climate=String(climate);
+  }
+  if (saved) action.value=saved.service;
+  fields.hidden=!climate || action.value!=="set_temperature";
+  if (!climate) return;
+  if (!fields.children.length) {
+    for (const [kind,label,type] of [["hvac-mode","Режим","select"],["temperature","Температура, °C","input"],["fan-mode","Вентилятор","select"]]) {
+      const wrapper=document.createElement("div"), caption=document.createElement("label"), input=document.createElement(type);
+      input.id=`${kind}-${nextId++}`;input.className=kind;caption.htmlFor=input.id;caption.className="field-label";caption.textContent=label;
+      if(type==="input"){input.type="number";input.min="5";input.max="35";input.step="1";input.value="26";}
+      wrapper.append(caption,input);fields.append(wrapper);
+    }
+  }
+  const entity=entities.find(e=>e.entity_id===id), mode=$(".hvac-mode",card), fan=$(".fan-mode",card), temperature=$(".temperature",card);
+  const oldMode=saved?.hvac_mode || mode.value || "heat", oldFan=saved?.fan_mode ?? fan.value;
+  mode.replaceChildren();
+  for(const value of ["heat","cool"].filter(v=>!entity?.hvac_modes || entity.hvac_modes.includes(v))){const option=document.createElement("option");option.value=value;option.textContent=value==="heat"?"Обогрев":"Охлаждение";mode.append(option);}
+  if([...mode.options].some(o=>o.value===oldMode))mode.value=oldMode;
+  fan.replaceChildren();
+  for(const value of ["",...(entity?.fan_modes || ["low","mid","high","auto"])]){const option=document.createElement("option");option.value=value;option.textContent=({"":"Не менять",low:"Минимальная (low)",mid:"Средняя (mid)",high:"Высокая (high)",auto:"Авто"})[value] || value;fan.append(option);}
+  if(oldFan && ![...fan.options].some(o=>o.value===oldFan)){const option=document.createElement("option");option.value=oldFan;option.textContent=oldFan;fan.append(option);}
+  fan.value=oldFan || "";
+  temperature.min=String(Math.max(5,entity?.min_temp ?? 5));temperature.max=String(Math.min(35,entity?.max_temp ?? 35));temperature.step=String(entity?.temperature_step || 1);
+  if(saved?.temperature!==undefined)temperature.value=saved.temperature;
+}
 function addCard(rule = {phrases:[],entity_id:"",service:"turn_on"}) {
   const card = $("#rule-template").content.firstElementChild.cloneNode(true), id = nextId++;
   for (const field of ["phrase", "entity", "action"]) {
@@ -48,9 +88,9 @@ function addCard(rule = {phrases:[],entity_id:"",service:"turn_on"}) {
     input.id = `${field}-${id}`; $(`.${field}-label`, card).htmlFor = input.id;
   }
   $(".phrases", card).value = rule.phrases.join("\n"); $(".entity", card).value = rule.entity_id;
-  $(".action", card).value = rule.service;
-  card.addEventListener("input", () => { entityHint(card); updateState(); });
-  card.addEventListener("change", updateState);
+  configureClimate(card,rule);
+  card.addEventListener("input", event => { if(event.target.classList.contains("entity"))configureClimate(card); entityHint(card); updateState(); });
+  card.addEventListener("change", () => {configureClimate(card);updateState();});
   $(".remove", card).addEventListener("click", () => { card.remove(); renumber(); updateState(); });
   $("#rules").append(card); entityHint(card); renumber();
   return card;
@@ -81,7 +121,7 @@ async function loadEntities() {
     for (const entity of entities) { const option=document.createElement("option");option.value=entity.entity_id;option.label=`${entity.name} · ${entity.state}`;list.append(option); }
     dot.className="dot";status.replaceChildren(dot,`HA на связи · ${entities.length} ${noun(entities.length,"сущность","сущности","сущностей")}`);
   } catch (error) {dot.className="dot error";status.replaceChildren(dot,"HA не отвечает — сущности можно ввести вручную");}
-  finally {button.disabled=false;document.querySelectorAll(".rule-card").forEach(entityHint);}
+  finally {button.disabled=false;document.querySelectorAll(".rule-card").forEach(card=>{configureClimate(card);entityHint(card);});}
 }
 function validate(rules) {
   let valid=true;const seen=new Map();
@@ -89,7 +129,12 @@ function validate(rules) {
     const rule=rules[i];let error="";
     if (!rule.phrases.length) error="Добавьте хотя бы одну фразу.";
     else if (rule.phrases.length>64 || rule.phrases.some(p=>new TextEncoder().encode(p).length>512)) error="Не больше 64 коротких фраз в одной команде.";
-    else if (!domains.has(rule.domain) || !/^[a-z_]+\.[a-z0-9_]+$/u.test(rule.entity_id)) error="Укажите сущность switch, light, fan или input_boolean, например switch.cabinet.";
+    else if (!domains.has(rule.domain) || !/^[a-z_]+\.[a-z0-9_]+$/u.test(rule.entity_id)) error="Укажите сущность switch, light, fan, input_boolean или climate.";
+    else if(rule.domain==="climate" && rule.service==="set_temperature") {
+      const temperature=$(".temperature",card);
+      if(!["heat","cool"].includes(rule.hvac_mode))error="Выберите обогрев или охлаждение, поддерживаемые устройством.";
+      else if(!temperature.value || !Number.isFinite(rule.temperature) || rule.temperature<Number(temperature.min) || rule.temperature>Number(temperature.max) || !temperature.checkValidity())error=`Укажите допустимую температуру от ${temperature.min} до ${temperature.max} °C.`;
+    }
     for (const phrase of rule.phrases) {
       const key=normalize(phrase);
       if (!key) error="Фраза не может состоять только из обращения или знаков пунктуации.";
@@ -121,7 +166,7 @@ $("#preview-form").addEventListener("submit",event=>{
   if (!key)return;
   const matches=collect().filter(r=>r.phrases.some(p=>normalize(p)===key));
   if (matches.length>1)result.textContent="Фраза повторяется в нескольких командах. Уберите дубликаты перед сохранением.";
-  else if (matches.length) {const rule=matches[0];result.textContent=`Home Assistant → ${rule.entity_id || "сущность не выбрана"} → ${rule.service==="turn_on"?"включить":"выключить"}.${dirty?" Это несохранённый список.":""}`;}
+  else if (matches.length) {const rule=matches[0];const action=rule.service==="set_temperature"?`${rule.hvac_mode==="heat"?"обогрев":"охлаждение"}, ${rule.temperature} °C${rule.fan_mode?`, вентилятор ${rule.fan_mode}`:""}`:rule.service==="turn_on"?"включить":"выключить";result.textContent=`Home Assistant → ${rule.entity_id || "сущность не выбрана"} → ${action}.${dirty?" Это несохранённый список.":""}`;}
   else result.textContent="Запрос останется у Яндекса. В текущем списке нет такой фразы.";
   result.hidden=false;
 });

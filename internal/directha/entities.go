@@ -11,9 +11,14 @@ import (
 )
 
 type Entity struct {
-	ID    string `json:"entity_id"`
-	Name  string `json:"name"`
-	State string `json:"state"`
+	ID        string   `json:"entity_id"`
+	Name      string   `json:"name"`
+	State     string   `json:"state"`
+	HVACModes []string `json:"hvac_modes,omitempty"`
+	FanModes  []string `json:"fan_modes,omitempty"`
+	MinTemp   *float64 `json:"min_temp,omitempty"`
+	MaxTemp   *float64 `json:"max_temp,omitempty"`
+	TempStep  *float64 `json:"temperature_step,omitempty"`
 }
 
 // Entities exposes only the names and states needed by the editor, never HA
@@ -43,7 +48,12 @@ func (c *Controller) Entities(ctx context.Context) ([]Entity, error) {
 		ID         string `json:"entity_id"`
 		State      string `json:"state"`
 		Attributes struct {
-			Name string `json:"friendly_name"`
+			Name      string   `json:"friendly_name"`
+			HVACModes []string `json:"hvac_modes"`
+			FanModes  []string `json:"fan_modes"`
+			MinTemp   *float64 `json:"min_temp"`
+			MaxTemp   *float64 `json:"max_temp"`
+			TempStep  *float64 `json:"target_temp_step"`
 		} `json:"attributes"`
 	}
 	if json.Unmarshal(data, &states) != nil {
@@ -56,7 +66,7 @@ func (c *Controller) Entities(ctx context.Context) ([]Entity, error) {
 			continue
 		}
 		switch domain {
-		case "switch", "light", "fan", "input_boolean":
+		case "switch", "light", "fan", "input_boolean", "climate":
 		default:
 			continue
 		}
@@ -64,7 +74,15 @@ func (c *Controller) Entities(ctx context.Context) ([]Entity, error) {
 		if name == "" {
 			name = s.ID
 		}
-		entities = append(entities, Entity{ID: s.ID, Name: name, State: s.State})
+		entity := Entity{ID: s.ID, Name: name, State: s.State}
+		if domain == "climate" {
+			entity.HVACModes = s.Attributes.HVACModes
+			entity.FanModes = s.Attributes.FanModes
+			entity.MinTemp = s.Attributes.MinTemp
+			entity.MaxTemp = s.Attributes.MaxTemp
+			entity.TempStep = s.Attributes.TempStep
+		}
+		entities = append(entities, entity)
 	}
 	sort.Slice(entities, func(i, j int) bool {
 		if entities[i].Name == entities[j].Name {
